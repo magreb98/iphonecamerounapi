@@ -30,8 +30,8 @@ if (!fs.existsSync(productImagesDir)) {
 app.use('/uploads', express.static(uploadsDir));
 
 // Database connection
-const sequelize = new Sequelize('iphone_cameroun', 'root', '', {
-  host: 'localhost',
+const sequelize = new Sequelize('explorateurmoboa_iphonecamerounapi', '410761', 'corneille123', {
+  host: 'mysql-explorateurmoboa.alwaysdata.net',
   dialect: 'mysql',
   logging: false
 });
