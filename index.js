@@ -30,8 +30,8 @@ if (!fs.existsSync(productImagesDir)) {
 app.use('/uploads', express.static(uploadsDir));
 
 // Database connection
-const sequelize = new Sequelize('explorateurmoboa_itest', '410761', 'corneille123', {
-  host: 'mysql-explorateurmoboa.alwaysdata.net',
+const sequelize = new Sequelize('iphone_cameroun', 'root', '', {
+  host: 'localhost',
   dialect: 'mysql',
   logging: false
 });
@@ -48,12 +48,20 @@ const sequelize = new Sequelize('explorateurmoboa_itest', '410761', 'corneille12
     const User = require('./models/User');
     const ProductImage = require('./models/ProductImage');
     const Configuration = require('./models/Configuration');
+    const Location = require('./models/Location');
     
     // Define associations
     Product.hasMany(ProductImage, { foreignKey: 'productId' });
     ProductImage.belongsTo(Product, { foreignKey: 'productId' });
+    
     Category.hasMany(Product, { foreignKey: 'categoryId' });
     Product.belongsTo(Category, { foreignKey: 'categoryId' });
+    
+    Location.hasMany(Product, { foreignKey: 'locationId' });
+    Product.belongsTo(Location, { foreignKey: 'locationId' });
+    
+    Location.hasMany(User, { foreignKey: 'locationId' });
+    User.belongsTo(Location, { foreignKey: 'locationId' });
     
     // Sync models with database
     await sequelize.sync({ alter: true });
@@ -64,12 +72,14 @@ const sequelize = new Sequelize('explorateurmoboa_itest', '410761', 'corneille12
     const categoryRoutes = require('./routes/categories');
     const authRoutes = require('./routes/auth');
     const configRoutes = require('./routes/configurations');
+    const locationRoutes = require('./routes/locations');
     
     // Routes
     app.use('/api/products', productRoutes);
     app.use('/api/categories', categoryRoutes);
     app.use('/api/auth', authRoutes);
     app.use('/api/configurations', configRoutes);
+    app.use('/api/locations', locationRoutes);
     
   } catch (error) {
     console.error('Unable to connect to the database:', error);

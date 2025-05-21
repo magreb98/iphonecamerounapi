@@ -30,11 +30,34 @@ const protect = async (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
-  if (req.user && req.user.isAdmin) {
+  if (req.user && (req.user.isAdmin || req.user.isSuperAdmin)) {
     next();
   } else {
     res.status(401).json({ message: 'Not authorized as an admin' });
   }
 };
 
-module.exports = { protect, admin };
+const superAdmin = (req, res, next) => {
+  if (req.user && req.user.isSuperAdmin) {
+    next();
+  } else {
+    res.status(401).json({ message: 'Not authorized as a super admin' });
+  }
+};
+
+// Middleware pour vérifier si l'utilisateur est associé à l'emplacement
+const locationAccess = (req, res, next) => {
+  const locationId = parseInt(req.params.locationId) || parseInt(req.body.locationId);
+  
+  if (req.user && req.user.isSuperAdmin) {
+    // Super admin a accès à tous les emplacements
+    next();
+  } else if (req.user && req.user.isAdmin && req.user.locationId === locationId) {
+    // Admin a accès uniquement à son emplacement
+    next();
+  } else {
+    res.status(401).json({ message: 'Not authorized for this location' });
+  }
+};
+
+module.exports = { protect, admin, superAdmin, locationAccess };

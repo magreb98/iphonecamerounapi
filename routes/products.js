@@ -1,9 +1,10 @@
-
 const { Router } = require('express');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const ProductImage = require('../models/ProductImage');
-const { protect, admin } = require('../middleware/authMiddleware');
+const Location = require('../models/Location');
+const User = require('../models/User');
+const { protect, admin, locationAccess } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -49,13 +50,17 @@ router.get('/', async (req, res) => {
     const limit = parseInt(req.query.limit) || 12;
     const offset = (page - 1) * limit;
     
-    // Category filter
+    // Category and location filters
     const categoryId = req.query.category ? parseInt(req.query.category) : null;
+    const locationId = req.query.location ? parseInt(req.query.location) : null;
     
     // Build the where clause
     const whereClause = {};
     if (categoryId) {
       whereClause.categoryId = categoryId;
+    }
+    if (locationId) {
+      whereClause.locationId = locationId;
     }
     
     // Get total count for pagination
@@ -68,6 +73,54 @@ router.get('/', async (req, res) => {
       offset,
       include: [
         { model: Category, attributes: ['name'] },
+        { model: Location, attributes: ['name'] },
+        { model: ProductImage, attributes: ['id', 'imageUrl', 'isMainImage'] }
+      ],
+      order: [['createdAt', 'DESC']]
+    });
+    
+    res.json({
+      products,
+      pagination: {
+        total: count,
+        page,
+        limit,
+        pages: Math.ceil(count / limit),
+        hasMore: page < Math.ceil(count / limit)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get products for the current admin's location
+router.get('/user', protect, admin, async (req, res) => {
+  try {
+    // Pagination parameters
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    
+    // Build the where clause based on user role
+    const whereClause = {};
+    
+    // Si ce n'est pas un super admin, limiter aux produits de son emplacement
+    if (!req.user.isSuperAdmin && req.user.locationId) {
+      whereClause.locationId = req.user.locationId;
+    }
+    
+    // Get total count for pagination
+    const count = await Product.count({ where: whereClause });
+    
+    // Fetch products with pagination
+    const products = await Product.findAll({
+      where: whereClause,
+      limit,
+      offset,
+      include: [
+        { model: Category, attributes: ['name'] },
+        { model: Location, attributes: ['name'] },
         { model: ProductImage, attributes: ['id', 'imageUrl', 'isMainImage'] }
       ],
       order: [['createdAt', 'DESC']]
@@ -94,6 +147,7 @@ router.get('/:id', async (req, res) => {
     const product = await Product.findByPk(req.params.id, {
       include: [
         { model: Category, attributes: ['name'] },
+        { model: Location, attributes: ['name'] },
         { model: ProductImage, attributes: ['id', 'imageUrl', 'isMainImage'] }
       ]
     });
@@ -113,11 +167,25 @@ router.post('/', protect, admin, async (req, res) => {
   try {
     const { name, price, imageUrl, categoryId, quantity, inStock, isOnPromotion, promotionPrice, promotionEndDate } = req.body;
     
+    // Si l'utilisateur n'est pas un super admin, utiliser son emplacement
+    let locationId = req.body.locationId;
+    
+    if (!req.user.isSuperAdmin) {
+      locationId = req.user.locationId;
+      
+      if (!locationId) {
+        return res.status(400).json({ message: "Vous n'êtes associé à aucun emplacement" });
+      }
+    } else if (!locationId) {
+      return res.status(400).json({ message: "L'ID de l'emplacement est requis" });
+    }
+    
     const product = await Product.create({
       name,
       price,
       imageUrl,
       categoryId,
+      locationId,
       quantity,
       inStock,
       isOnPromotion: isOnPromotion || false,
@@ -132,7 +200,16 @@ router.post('/', protect, admin, async (req, res) => {
       isMainImage: true
     });
     
-    res.status(201).json(product);
+    // Charger le produit avec les relations
+    const createdProduct = await Product.findByPk(product.id, {
+      include: [
+        { model: Category, attributes: ['name'] },
+        { model: Location, attributes: ['name'] },
+        { model: ProductImage, attributes: ['id', 'imageUrl', 'isMainImage'] }
+      ]
+    });
+    
+    res.status(201).json(createdProduct);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -283,7 +360,17 @@ router.put('/:id', protect, admin, async (req, res) => {
       return res.status(404).json({ message: 'Product not found' });
     }
     
+    // Vérifier l'accès à l'emplacement
+    if (!req.user.isSuperAdmin && req.user.locationId !== product.locationId) {
+      return res.status(401).json({ message: "Vous n'êtes pas autorisé à modifier ce produit" });
+    }
+    
     const { name, price, imageUrl, categoryId, quantity, inStock, isOnPromotion, promotionPrice, promotionEndDate } = req.body;
+    
+    // Si l'utilisateur est un super admin, il peut changer l'emplacement
+    if (req.user.isSuperAdmin && req.body.locationId) {
+      product.locationId = req.body.locationId;
+    }
     
     product.name = name || product.name;
     product.price = price || product.price;
@@ -315,7 +402,16 @@ router.put('/:id', protect, admin, async (req, res) => {
       }
     }
     
-    res.json(product);
+    // Charger le produit avec les relations
+    const updatedProduct = await Product.findByPk(product.id, {
+      include: [
+        { model: Category, attributes: ['name'] },
+        { model: Location, attributes: ['name'] },
+        { model: ProductImage, attributes: ['id', 'imageUrl', 'isMainImage'] }
+      ]
+    });
+    
+    res.json(updatedProduct);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -359,6 +455,11 @@ router.delete('/:id', protect, admin, async (req, res) => {
     
     if (!product) {
       return res.status(404).json({ message: 'Product not found' });
+    }
+    
+    // Vérifier l'accès à l'emplacement
+    if (!req.user.isSuperAdmin && req.user.locationId !== product.locationId) {
+      return res.status(401).json({ message: "Vous n'êtes pas autorisé à supprimer ce produit" });
     }
     
     // Delete all product images from storage

@@ -36,6 +36,14 @@ const Product = sequelize.define('Product', {
       key: 'id'
     }
   },
+  locationId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: 'Locations',
+      key: 'id'
+    }
+  },
   isOnPromotion: {
     type: DataTypes.BOOLEAN,
     defaultValue: false

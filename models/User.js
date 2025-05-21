@@ -24,6 +24,18 @@ const User = sequelize.define('User', {
   isAdmin: {
     type: DataTypes.BOOLEAN,
     defaultValue: false
+  },
+  isSuperAdmin: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  },
+  locationId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'Locations',
+      key: 'id'
+    }
   }
 }, {
   timestamps: true,
